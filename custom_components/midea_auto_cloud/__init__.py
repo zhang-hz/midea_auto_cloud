@@ -189,6 +189,8 @@ async def load_device_config(hass: HomeAssistant, device_type, sn8, subtype=None
 
 async def update_listener(hass: HomeAssistant, config_entry: ConfigEntry):
     device_id = config_entry.data.get(CONF_DEVICE_ID)
+    # Sync debug save for per-device or account entries
+    accounts = hass.data.get(DOMAIN, {}).get("accounts", {})
     if device_id is not None:
         ip_address = config_entry.options.get(
             CONF_IP_ADDRESS, None
@@ -202,8 +204,19 @@ async def update_listener(hass: HomeAssistant, config_entry: ConfigEntry):
                 device.set_ip_address(ip_address)
             if refresh_interval is not None:
                 device.set_refresh_interval(refresh_interval)
-            # Sync debug save option from config entry to device
-            device._debug_save_messages = config_entry.options.get("debug_save_messages", False)
+    # Sync debug save: for account entries, sync all its coordinators;
+    # for per-device entries, find and sync the matching coordinator.
+    if device_id is not None:
+        for bucket in accounts.values():
+            coord = bucket.get("coordinator_map", {}).get(device_id)
+            if coord:
+                coord._sync_debug_save()
+                break
+    else:
+        bucket = accounts.get(config_entry.entry_id)
+        if bucket:
+            for coord in bucket.get("coordinator_map", {}).values():
+                coord._sync_debug_save()
             if device._debug_save_messages:
                 device._debug_save_dir = os.path.join(hass.config.path(), "midea_debug", str(device_id))
             else:
