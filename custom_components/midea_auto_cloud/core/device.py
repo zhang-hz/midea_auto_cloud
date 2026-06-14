@@ -102,7 +102,6 @@ class MiedaDevice(threading.Thread):
         self._default_values = {}
         self._lua_runtime = MideaCodec(lua_file, device_type=self._attributes.get("device_type"), sn=sn, subtype=subtype) if lua_file is not None else None
         self._cloud = cloud
-        self._debug_save_messages = False
 
     def _handle_t0xd9_db_location_selection(self, status, value):
         # 处理T0xD9复式洗衣机的db_location_selection更新
@@ -220,20 +219,6 @@ class MiedaDevice(threading.Thread):
     def set_default_values(self, default_values: dict):
         """设置属性的默认值"""
         self._default_values = default_values or {}
-
-    def enable_debug_save(self, enabled: bool = True):
-        self._debug_save_messages = enabled
-
-    def _save_debug_message(self, raw_hex: str, decoded: dict):
-        import os, json
-        from datetime import datetime
-        save_dir = os.path.join(os.getcwd(), "midea_debug", str(self._device_id))
-        os.makedirs(save_dir, exist_ok=True)
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-        with open(os.path.join(save_dir, f"{ts}_raw.hex"), "w") as f:
-            f.write(raw_hex)
-        with open(os.path.join(save_dir, f"{ts}_parsed.json"), "w", encoding="utf-8") as f:
-            json.dump(decoded, f, ensure_ascii=False, indent=2, default=str)
 
     @staticmethod
     def _formula_attribute_names(formula: str) -> list[str]:
@@ -584,8 +569,6 @@ class MiedaDevice(threading.Thread):
                     MideaLogger.debug(f"Received: {decrypted.hex().lower()}")
                     if status := self._lua_runtime.decode_status(decrypted.hex()):
                         MideaLogger.debug(f"Decoded: {status}")
-                        if self._debug_save_messages:
-                            self._save_debug_message(decrypted.hex(), status)
                         new_status = {}
                         calculated_outputs = self._calculated_get_output_names()
                         for single in status.keys():
@@ -606,8 +589,6 @@ class MiedaDevice(threading.Thread):
         if reply := await self._cloud.send_cloud(self._device_id, data):
             if reply_dec := self._lua_runtime.decode_status(dec_string_to_bytes(reply).hex()):
                 MideaLogger.debug(f"Decoded: {reply_dec}")
-                if self._debug_save_messages:
-                    self._save_debug_message(dec_string_to_bytes(reply).hex(), reply_dec)
                 result = self._parse_cloud_message(reply_dec, update=False)
                 if result == ParseMessageResult.ERROR:
                     MideaLogger.debug(f"Message 'ERROR' received")
