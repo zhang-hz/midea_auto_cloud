@@ -613,6 +613,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
         except Exception as e:
             MideaLogger.error(f"Fetch appliances failed: {e}")
         await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
+        config_entry.add_update_listener(update_listener)
         return True
 
 
