@@ -102,6 +102,9 @@ class MiedaDevice(threading.Thread):
         self._default_values = {}
         self._lua_runtime = MideaCodec(lua_file, device_type=self._attributes.get("device_type"), sn=sn, subtype=subtype) if lua_file is not None else None
         self._cloud = cloud
+        self._debug_save_messages = False
+        self._debug_save_dir = None
+        self._debug_save_max_pairs = 1000
 
     def _handle_t0xd9_db_location_selection(self, status, value):
         # 处理T0xD9复式洗衣机的db_location_selection更新
@@ -219,6 +222,60 @@ class MiedaDevice(threading.Thread):
     def set_default_values(self, default_values: dict):
         """设置属性的默认值"""
         self._default_values = default_values or {}
+
+    def enable_debug_save(self, enabled: bool = True):
+        self._debug_save_messages = enabled
+
+    def set_debug_save_dir(self, save_dir: str | None):
+        self._debug_save_dir = save_dir
+
+    def _save_debug_message(self, raw_data, parsed_data, source: str = "lan"):
+        if not self._debug_save_messages or not self._debug_save_dir:
+            return
+        import os
+        import json
+        from datetime import datetime
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        try:
+            os.makedirs(self._debug_save_dir, exist_ok=True)
+        except Exception as e:
+            MideaLogger.warning(f"Debug save: mkdir failed: {e}")
+            return
+        if isinstance(raw_data, str):
+            raw_ext, raw_content = "hex", raw_data
+        else:
+            raw_ext, raw_content = "json", json.dumps(raw_data, ensure_ascii=False, default=str, indent=2)
+        try:
+            with open(os.path.join(self._debug_save_dir, f"{ts}_{source}_raw.{raw_ext}"), "w") as f:
+                f.write(raw_content)
+        except Exception as e:
+            MideaLogger.warning(f"Debug save: write raw failed: {e}")
+        try:
+            with open(os.path.join(self._debug_save_dir, f"{ts}_{source}_parsed.json"), "w", encoding="utf-8") as f:
+                json.dump(parsed_data, f, ensure_ascii=False, indent=2, default=str)
+        except Exception as e:
+            MideaLogger.warning(f"Debug save: write parsed failed: {e}")
+        self._cleanup_debug_files()
+
+    def _cleanup_debug_files(self):
+        import os
+        if not self._debug_save_dir or not os.path.isdir(self._debug_save_dir):
+            return
+        try:
+            entries = []
+            for f in os.listdir(self._debug_save_dir):
+                if f.endswith("_parsed.json"):
+                    path = os.path.join(self._debug_save_dir, f)
+                    entries.append((os.path.getmtime(path), f.replace("_parsed.json", "")))
+            entries.sort()
+            if len(entries) > self._debug_save_max_pairs:
+                for _, prefix in entries[:len(entries) - self._debug_save_max_pairs]:
+                    for ext in ("_raw.hex", "_raw.json", "_parsed.json"):
+                        fpath = os.path.join(self._debug_save_dir, prefix + ext)
+                        if os.path.exists(fpath):
+                            os.remove(fpath)
+        except Exception as e:
+            MideaLogger.warning(f"Debug save: cleanup failed: {e}")
 
     @staticmethod
     def _formula_attribute_names(formula: str) -> list[str]:
@@ -490,6 +547,8 @@ class MiedaDevice(threading.Thread):
                         query=actual_query
                     ):
                         self._parse_cloud_message(status)
+                        if self._debug_save_messages:
+                            self._save_debug_message(status, dict(self._attributes), source="cloud")
                     else:
                         if self._lua_runtime is not None:
                             if query_cmd := self._lua_runtime.build_query(actual_query):
@@ -501,6 +560,8 @@ class MiedaDevice(threading.Thread):
                         query=actual_query
                     ):
                         self._parse_cloud_message(status)
+                        if self._debug_save_messages:
+                            self._save_debug_message(status, dict(self._attributes), source="cloud")
                     else:
                         if self._lua_runtime is not None:
                             if query_cmd := self._lua_runtime.build_query(actual_query):
@@ -569,6 +630,8 @@ class MiedaDevice(threading.Thread):
                     MideaLogger.debug(f"Received: {decrypted.hex().lower()}")
                     if status := self._lua_runtime.decode_status(decrypted.hex()):
                         MideaLogger.debug(f"Decoded: {status}")
+                        if self._debug_save_messages:
+                            self._save_debug_message(decrypted.hex(), status, source="lan")
                         new_status = {}
                         calculated_outputs = self._calculated_get_output_names()
                         for single in status.keys():
@@ -590,6 +653,8 @@ class MiedaDevice(threading.Thread):
             if reply_dec := self._lua_runtime.decode_status(dec_string_to_bytes(reply).hex()):
                 MideaLogger.debug(f"Decoded: {reply_dec}")
                 result = self._parse_cloud_message(reply_dec, update=False)
+                if self._debug_save_messages:
+                    self._save_debug_message(dec_string_to_bytes(reply).hex(), reply_dec, source='cmd')
                 if result == ParseMessageResult.ERROR:
                     MideaLogger.debug(f"Message 'ERROR' received")
                 elif result == ParseMessageResult.SUCCESS:

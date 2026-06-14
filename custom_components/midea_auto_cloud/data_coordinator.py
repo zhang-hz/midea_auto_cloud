@@ -54,6 +54,7 @@ class MideaDataUpdateCoordinator(DataUpdateCoordinator[MideaDeviceData]):
         self._device_id = device.device_id
         self._cloud = cloud
         self._last_cloud_poll: dict[str, datetime | None] = {}
+        self._sync_debug_save()
 
     async def _async_setup(self) -> None:
         """Set up the coordinator."""
@@ -215,6 +216,17 @@ class MideaDataUpdateCoordinator(DataUpdateCoordinator[MideaDeviceData]):
             if elapsed < poll_interval:
                 return False
         return True
+
+    def _sync_debug_save(self) -> None:
+        import os
+        enabled = self.config_entry.options.get("debug_save_messages", False)
+        if enabled:
+            save_dir = os.path.join(self.hass.config.path(), "midea_debug", str(self._device_id))
+            self.device._debug_save_messages = True
+            self.device._debug_save_dir = save_dir
+        else:
+            self.device._debug_save_messages = False
+            self.device._debug_save_dir = None
 
     async def _poll_cloud_stats(self) -> None:
         """轮询云端统计（空调电量、洗衣机/洗碗机水电等）。"""
