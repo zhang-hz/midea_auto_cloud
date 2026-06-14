@@ -372,13 +372,21 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         if user_input is not None:
             if user_input["option"] == "change_credentials":
                 return await self.async_step_change_credentials()
+            else:
+                return self.async_create_entry(
+                    title="",
+                    data={"debug_save_messages": user_input["debug_save_messages"]}
+                )
         
+        current_options = self._config_entry.options or {}
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema({
-                vol.Required("option", default="change_credentials"): vol.In({
+                vol.Required("option", default="save"): vol.In({
+                    "save": "保存设置",
                     "change_credentials": "修改账号密码",
-                })
+                }),
+                vol.Optional("debug_save_messages", default=current_options.get("debug_save_messages", False)): bool,
             }),
             errors=error
         )
@@ -436,7 +444,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                         title=new_title,
                         data=current_data
                     )
-                    return self.async_create_entry(title="", data={})
+                    return self.async_create_entry(title="", data={"debug_save_messages": self._config_entry.options.get("debug_save_messages", False)})
                 else:
                     errors["base"] = "login_failed"
             except Exception as e:

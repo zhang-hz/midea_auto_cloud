@@ -202,6 +202,12 @@ async def update_listener(hass: HomeAssistant, config_entry: ConfigEntry):
                 device.set_ip_address(ip_address)
             if refresh_interval is not None:
                 device.set_refresh_interval(refresh_interval)
+            # Sync debug save option from config entry to device
+            device._debug_save_messages = config_entry.options.get("debug_save_messages", False)
+            if device._debug_save_messages:
+                device._debug_save_dir = os.path.join(hass.config.path(), "midea_debug", str(device_id))
+            else:
+                device._debug_save_dir = None
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType):
