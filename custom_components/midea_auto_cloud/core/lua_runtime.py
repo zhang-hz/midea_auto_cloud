@@ -7,7 +7,7 @@ from .logger import MideaLogger
 
 
 class LuaRuntime:
-    def __init__(self, file, *, suppress_output: bool = True):
+    def __init__(self, file, *, suppress_output: bool = True, patch: str = ""):
         self._runtimes = lupa.lua51.LuaRuntime()
         self._suppress_output = suppress_output
 
@@ -25,7 +25,7 @@ class LuaRuntime:
 
         # 设置Lua路径，包含cjson.lua和bit.lua的目录
         lua_dir = os.path.dirname(os.path.abspath(file))
-        self._runtimes.execute(f'package.path = package.path .. ";{lua_dir}/?.lua"')
+        self._runtimes.execute(f'package.path = package.path .. ";{lua_dir.replace(chr(92), chr(47))}/?.lua"')
 
         # 加载必需的Lua库
         try:
@@ -39,8 +39,14 @@ class LuaRuntime:
             MideaLogger.warning(f"Failed to load bit: {e}")
 
         # 加载设备特定的Lua文件
-        string = f'dofile("{file}")'
-        self._runtimes.execute(string)
+        if patch:
+            with open(file, "r", encoding="utf-8") as _f:
+                _lua_source = _f.read()
+            _lua_source += "\n" + patch
+            self._runtimes.execute(_lua_source)
+        else:
+            string = f'dofile("{file}")'
+            self._runtimes.execute(string)
         self._lock = threading.Lock()
         self._json_to_data = self._runtimes.eval("function(param) return jsonToData(param) end")
         self._data_to_json = self._runtimes.eval("function(param) return dataToJson(param) end")
@@ -57,9 +63,34 @@ class LuaRuntime:
         return result
 
 
+LUA_PATCH_CODE = (
+    "\n-- === midea_auto_cloud injected patch ==="
+    "\nfunction __get_all_keyP()"
+    "\n    return keyP"
+    "\nend"
+    "\n"
+    "\nlocal ___orig_binToModel = binToModel"
+    "\nbinToModel = function(binData)"
+    "\n    ___orig_binToModel(binData)"
+    "\n    if dataType == 0x30 and #binData >= 10 then"
+    "\n        keyP['comp_target_freq'] = binData[0] + binData[1] * 256"
+    "\n        keyP['comp_actual_freq'] = binData[2] + binData[3] * 256"
+    "\n        keyP['outdoor_fan_speed'] = binData[4]"
+    "\n        keyP['exhaust_temp'] = binData[7]"
+    "\n        keyP['current_a'] = (binData[8] + binData[9] * 256) / 10.0"
+    "\n    end"
+    "\n    if dataType == 0x10 and #binData >= 6 then"
+    "\n        keyP['real_wind_speed'] = binData[3]"
+    "\n    end"
+    "\nend"
+)
+
+
 class MideaCodec(LuaRuntime):
     def __init__(self, file, device_type=None, sn=None, subtype=None):
-        super().__init__(file)
+        super().__init__(file, patch=LUA_PATCH_CODE)
+        self._get_all_keyp_fn = self._runtimes.eval(
+            "function() return __get_all_keyP() end")
         self._device_type = device_type
         self._sn = sn
         self._subtype = subtype
@@ -145,7 +176,11 @@ class MideaCodec(LuaRuntime):
         try:
             result = self.data_to_json(json_str)
             status = json.loads(result)
-            return status.get("status")
+            decoded = status.get("status", {})
+            all_keyp = self._get_all_keyp_fn()
+            if all_keyp:
+                decoded.update(all_keyp)
+            return decoded
         except lupa.LuaError as e:
             MideaLogger.error(f"LuaRuntimeError in decode_status {data}: {repr(e)}")
         return None

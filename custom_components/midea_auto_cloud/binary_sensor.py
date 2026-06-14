@@ -13,7 +13,6 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .midea_entity import MideaEntity
 from .platform_setup import async_setup_platform_entities
 
-MAX_ATTRIBUTES_BYTES = 16000
 
 
 async def async_setup_entry(
@@ -82,24 +81,15 @@ class MideaDeviceStatusSensorEntity(MideaEntity, BinarySensorEntity):
             "model": self._model,
             "device_type": self._device_type,
         }
-        current_size = len(json.dumps(attributes, default=str))
-        other_attrs = {}
         for key, value in self.device_attributes.items():
             if value is None:
                 continue
             if isinstance(value, (str, int, float, bool)):
-                other_attrs[key] = value
+                attributes[key] = value
             elif isinstance(value, dict):
                 for sub_key, sub_value in value.items():
                     if sub_value is not None and isinstance(sub_value, (str, int, float, bool)):
-                        other_attrs[f"{key}_{sub_key}"] = sub_value
-
-        for key in sorted(other_attrs.keys()):
-            pair_size = len(json.dumps({key: other_attrs[key]}, default=str))
-            if current_size + pair_size > MAX_ATTRIBUTES_BYTES:
-                break
-            attributes[key] = other_attrs[key]
-            current_size += pair_size
+                        attributes[f"{key}_{sub_key}"] = sub_value
         return attributes
 
 
