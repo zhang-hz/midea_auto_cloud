@@ -387,6 +387,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     "change_credentials": "修改账号密码",
                 }),
                 vol.Optional("debug_save_messages", default=current_options.get("debug_save_messages", False)): bool,
+                vol.Optional("transparent_polling", default=current_options.get("transparent_polling", False)): bool,
             }),
             errors=error
         )
@@ -444,7 +445,10 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                         title=new_title,
                         data=current_data
                     )
-                    return self.async_create_entry(title="", data={"debug_save_messages": self._config_entry.options.get("debug_save_messages", False)})
+                    return self.async_create_entry(title="", data={
+                        "debug_save_messages": self._config_entry.options.get("debug_save_messages", False),
+                        "transparent_polling": self._config_entry.options.get("transparent_polling", False),
+                    })
                 else:
                     errors["base"] = "login_failed"
             except Exception as e:

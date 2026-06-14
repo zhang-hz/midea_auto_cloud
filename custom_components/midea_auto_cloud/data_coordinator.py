@@ -227,6 +227,7 @@ class MideaDataUpdateCoordinator(DataUpdateCoordinator[MideaDeviceData]):
         else:
             self.device._debug_save_messages = False
             self.device._debug_save_dir = None
+        self.device._transparent_polling = self.config_entry.options.get("transparent_polling", False)
 
     async def _poll_cloud_stats(self) -> None:
         """轮询云端统计（空调电量、洗衣机/洗碗机水电等）。"""

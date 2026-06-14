@@ -105,6 +105,7 @@ class MiedaDevice(threading.Thread):
         self._debug_save_messages = False
         self._debug_save_dir = None
         self._debug_save_max_pairs = 1000
+        self._transparent_polling = False
 
     def _handle_t0xd9_db_location_selection(self, status, value):
         # 处理T0xD9复式洗衣机的db_location_selection更新
@@ -549,10 +550,10 @@ class MiedaDevice(threading.Thread):
                         self._parse_cloud_message(status)
                         if self._debug_save_messages:
                             self._save_debug_message(status, dict(self._attributes), source="cloud")
-                    else:
-                        if self._lua_runtime is not None:
-                            if query_cmd := self._lua_runtime.build_query(actual_query):
-                                await self._build_send(query_cmd)
+                    need_transparent = self._transparent_polling or not status
+                    if need_transparent and self._lua_runtime is not None:
+                        if query_cmd := self._lua_runtime.build_query(actual_query):
+                            await self._build_send(query_cmd)
 
                 elif isinstance(cloud, MeijuCloud):
                     if status := await cloud.get_device_status(
