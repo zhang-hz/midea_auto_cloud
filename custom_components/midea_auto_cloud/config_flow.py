@@ -370,12 +370,17 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_init(self, user_input=None, error=None):
         """初始化选项流程"""
         if user_input is not None:
+            debug_options = {
+                "debug_save_messages": user_input.get("debug_save_messages", False),
+                "transparent_polling": user_input.get("transparent_polling", False),
+            }
             if user_input["option"] == "change_credentials":
+                self._pending_options = debug_options
                 return await self.async_step_change_credentials()
             else:
                 return self.async_create_entry(
                     title="",
-                    data={"debug_save_messages": user_input["debug_save_messages"]}
+                    data=debug_options
                 )
         
         current_options = self._config_entry.options or {}
@@ -445,9 +450,10 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                         title=new_title,
                         data=current_data
                     )
+                    pending = getattr(self, "_pending_options", {})
                     return self.async_create_entry(title="", data={
-                        "debug_save_messages": self._config_entry.options.get("debug_save_messages", False),
-                        "transparent_polling": self._config_entry.options.get("transparent_polling", False),
+                        "debug_save_messages": pending.get("debug_save_messages", self._config_entry.options.get("debug_save_messages", False)),
+                        "transparent_polling": pending.get("transparent_polling", self._config_entry.options.get("transparent_polling", False)),
                     })
                 else:
                     errors["base"] = "login_failed"
